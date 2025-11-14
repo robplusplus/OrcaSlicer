@@ -229,19 +229,6 @@ if (MSVC)
     add_compile_options(/wd4018)
 endif ()
 
-if (${CMAKE_CXX_COMPILER_ID} STREQUAL "AppleClang" AND ${CMAKE_CXX_COMPILER_VERSION} VERSION_GREATER 15)
-    add_compile_definitions(BOOST_NO_CXX98_FUNCTION_BASE _HAS_AUTO_PTR_ETC=0)
-endif()
-
-if (MINGW)
-    add_compile_options(-Wa,-mbig-obj)
-endif ()
-
-if (NOT MSVC)
-    # ARMs (Raspberry PI) use an unsigned char by default. Let's make it consistent for OrcaSlicer on all platforms.
-    add_compile_options(-fsigned-char)
-endif ()
-
 if ("${DEP_BUILD_DIR}" STREQUAL "")
     get_filename_component(BIN_DIR_NAME ${CMAKE_BINARY_DIR} NAME)
     if (APPLE AND BIN_DIR_NAME STREQUAL "${CMAKE_OSX_ARCHITECTURES}")
@@ -733,7 +720,7 @@ add_custom_target(gettext_po_to_mo
     COMMENT "Generate localization po files (binary) from mo files (texts)"
 )
 file(GLOB L10N_PO_FILES "${BBL_L18N_DIR}/*/OrcaSlicer*.po")
-foreach(po_file ${BBL_L10N_PO_FILES})
+foreach(po_file ${BBL_L18N_PO_FILES})
     GET_FILENAME_COMPONENT(SECOND_FOLDER_ABSOLUTE ${po_file} DIRECTORY)
     string(REGEX REPLACE ".*/(.*)" "\\1" po_dir "${SECOND_FOLDER_ABSOLUTE}" )
     SET(mo_file "${L10N_DIR}/${po_dir}/OrcaSlicer.mo")

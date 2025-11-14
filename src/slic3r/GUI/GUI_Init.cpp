@@ -10,6 +10,9 @@
 #include "slic3r/GUI/MainFrame.hpp"
 #include "slic3r/GUI/Plater.hpp"
 
+// Allow starting/stopping the embedded REST server from the GUI init flow.
+#include "RestServer.hpp"
+
 // To show a message box if GUI initialization ends up with an exception thrown.
 #include <wx/msgdlg.h>
 
@@ -50,10 +53,13 @@ int GUI_Run(GUI_InitParams &params)
         //}
 
 //      gui->autosave = m_config.opt_string("autosave");
-        GUI::GUI_App::SetInstance(gui);
+    GUI::GUI_App::SetInstance(gui);
         gui->init_params = &params;
 
-        if (params.argc > 1) {
+    // Start the REST server under the GUI's control (not as a static instance).
+    start_rest_server("127.0.0.1", 8081);
+
+    if (params.argc > 1) {
             // STUDIO-273 wxWidgets report error when opening some files with specific names
             // wxWidgets does not handle parameters, so intercept parameters here, only keep the app name
             int                 argc = 1;
@@ -61,7 +67,10 @@ int GUI_Run(GUI_InitParams &params)
             argv.push_back(params.argv[0]);
             return wxEntry(argc, argv.data());
         } else {
-            return wxEntry(params.argc, params.argv);
+            int ret = wxEntry(params.argc, params.argv);
+            // Stop the REST server when the GUI exits.
+            stop_rest_server();
+            return ret;
         }
     } catch (const Slic3r::Exception &ex) {
         BOOST_LOG_TRIVIAL(error) << ex.what() << std::endl;
@@ -71,6 +80,8 @@ int GUI_Run(GUI_InitParams &params)
         wxMessageBox(format_wxstr(_L("Fatal error, exception caught: %1%"), ex.what()), _L("Orca Slicer GUI initialization failed"), wxICON_STOP);
     }
     // error
+    // Make sure the REST server is stopped in case of init exceptions
+    stop_rest_server();
     return 1;
 }
 }

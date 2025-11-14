@@ -9,12 +9,113 @@
 #include <boost/log/trivial.hpp>
 #include "libslic3r/Utils.hpp"
 #include "NetworkAgent.hpp"
+#include "nlohmann/json.hpp"
+#include <sstream>
 
 
 
 using namespace BBL;
 
 namespace Slic3r {
+namespace {
+// Pretty-print all fields of PrintParams for diagnostics (mask password)
+static std::string dump_print_params(const PrintParams& p)
+{
+    auto tf = [](bool v){ return v ? "true" : "false"; };
+    auto mask = [](const std::string& s){ return s.empty() ? std::string("") : std::string(s.size(), '*'); };
+    std::ostringstream oss;
+    oss << "PrintParams{"
+        << "dev_id='" << p.dev_id << "', "
+        << "task_name='" << p.task_name << "', "
+        << "project_name='" << p.project_name << "', "
+        << "preset_name='" << p.preset_name << "', "
+        << "filename='" << p.filename << "', "
+        << "config_filename='" << p.config_filename << "', "
+        << "plate_index=" << p.plate_index << ", "
+        << "ftp_folder='" << p.ftp_folder << "', "
+        << "ftp_file='" << p.ftp_file << "', "
+        << "ftp_file_md5='" << p.ftp_file_md5 << "', "
+        << "ams_mapping='" << p.ams_mapping << "', "
+        << "ams_mapping2='" << p.ams_mapping2 << "', "
+        << "ams_mapping_info='" << p.ams_mapping_info << "', "
+        << "nozzles_info='" << p.nozzles_info << "', "
+        << "connection_type='" << p.connection_type << "', "
+        << "comments='" << p.comments << "', "
+        << "origin_profile_id=" << p.origin_profile_id << ", "
+        << "stl_design_id=" << p.stl_design_id << ", "
+        << "origin_model_id='" << p.origin_model_id << "', "
+        << "print_type='" << p.print_type << "', "
+        << "dst_file='" << p.dst_file << "', "
+        << "dev_name='" << p.dev_name << "', "
+        << "dev_ip='" << p.dev_ip << "', "
+        << "use_ssl_for_ftp=" << tf(p.use_ssl_for_ftp) << ", "
+        << "use_ssl_for_mqtt=" << tf(p.use_ssl_for_mqtt) << ", "
+        << "username='" << p.username << "', "
+        << "password='" << mask(p.password) << "', "
+        << "task_bed_leveling=" << tf(p.task_bed_leveling) << ", "
+        << "task_flow_cali=" << tf(p.task_flow_cali) << ", "
+        << "task_vibration_cali=" << tf(p.task_vibration_cali) << ", "
+        << "task_layer_inspect=" << tf(p.task_layer_inspect) << ", "
+        << "task_record_timelapse=" << tf(p.task_record_timelapse) << ", "
+        << "task_use_ams=" << tf(p.task_use_ams) << ", "
+        << "task_bed_type='" << p.task_bed_type << "', "
+        << "extra_options='" << p.extra_options << "', "
+        << "auto_bed_leveling=" << p.auto_bed_leveling << ", "
+        << "auto_flow_cali=" << p.auto_flow_cali << ", "
+        << "auto_offset_cali=" << p.auto_offset_cali << ", "
+        << "task_ext_change_assist=" << tf(p.task_ext_change_assist)
+        << "}";
+    return oss.str();
+}
+// Best-effort reconstruction of the 'project_file' MQTT JSON for debugging/comparison
+static std::string build_project_file_json(const PrintParams& p)
+{
+    try {
+        nlohmann::json j;
+        nlohmann::json pr;
+        pr["command"] = "project_file";
+        // File and URL
+        std::string file = p.ftp_file;
+        std::string folder = p.ftp_folder;
+        if (!folder.empty() && folder.back() != '/' && folder.back() != '\\') folder.push_back('/');
+        std::string url = std::string("file:///") + folder + file;
+        pr["file"] = file;
+        pr["url"]  = url;
+        // MD5 of file if available
+        if (!p.ftp_file_md5.empty()) pr["md5"] = p.ftp_file_md5;
+        // Plate param path (aligns with observed ack pattern)
+        int plate1 = p.plate_index; // p.plate_index is 1-based per our code
+        if (plate1 <= 0) plate1 = 1;
+        pr["param"] = std::string("Metadata/plate_") + std::to_string(plate1) + ".gcode";
+        // Profile/Project ids if available
+        pr["profile_id"] = std::to_string(p.origin_profile_id);
+        pr["project_id"] = std::to_string(p.stl_design_id);
+        // Options
+        if (!p.task_bed_type.empty()) pr["bed_type"] = p.task_bed_type; 
+        pr["bed_leveling"]  = p.task_bed_leveling;
+        pr["flow_cali"]      = p.task_flow_cali;
+        pr["layer_inspect"]  = p.task_layer_inspect;
+        pr["vibration_cali"] = p.task_vibration_cali;
+        pr["timelapse"]      = p.task_record_timelapse;
+        pr["use_ams"]        = p.task_use_ams;
+        // AMS mapping: try to parse if string contains JSON, else omit or fallback
+        try {
+            if (!p.ams_mapping.empty()) {
+                pr["ams_mapping"] = nlohmann::json::parse(p.ams_mapping);
+            }
+        } catch (...) {
+            // ignore if not parseable
+        }
+        // The following fields typically appear in ack; we won't set them on send
+        // pr["sequence_id"], pr["subtask_id"], pr["task_id"], pr["reason"], pr["result"], pr["subtask_name"]
+        j["print"] = std::move(pr);
+        return j.dump();
+    } catch (...) {
+        return std::string();
+    }
+}
+
+} // anonymous namespace
 
 #define BAMBU_SOURCE_LIBRARY "BambuSource"
 
@@ -880,6 +981,8 @@ int NetworkAgent::send_message(std::string dev_id, std::string json_str, int qos
 {
     int ret = 0;
     if (network_agent && send_message_ptr) {
+        // Log exact JSON payload being sent
+        BOOST_LOG_TRIVIAL(info) << "[NetworkAgent] send_message dev_id=" << dev_id << " qos=" << qos << " flag=" << flag << " json=" << json_str;
         if (use_legacy_network) {
             ret = (reinterpret_cast<func_send_message_legacy>(send_message_ptr))(network_agent, dev_id, json_str, qos);
         } else {
@@ -918,6 +1021,8 @@ int NetworkAgent::send_message_to_printer(std::string dev_id, std::string json_s
 {
     int ret = 0;
     if (network_agent && send_message_to_printer_ptr) {
+        // Log exact JSON payload being sent to printer
+        BOOST_LOG_TRIVIAL(info) << "[NetworkAgent] send_message_to_printer dev_id=" << dev_id << " qos=" << qos << " flag=" << flag << " json=" << json_str;
         if (use_legacy_network) {
             ret = (reinterpret_cast<func_send_message_to_printer_legacy>(send_message_to_printer_ptr))(network_agent, dev_id, json_str, qos);
         } else {
@@ -1144,6 +1249,8 @@ int NetworkAgent::start_print(PrintParams params, OnUpdateStatusFn update_fn, Wa
 {
     int ret = 0;
     if (network_agent && start_print_ptr) {
+        // Log the parameters as received via UI path for diagnostics
+        BOOST_LOG_TRIVIAL(info) << "[NetworkAgent] start_print params: " << dump_print_params(params);
         if (use_legacy_network) {
             ret = (reinterpret_cast<func_start_print_legacy>(start_print_ptr))(network_agent, as_legacy(params), update_fn, cancel_fn, wait_fn);
         } else {
@@ -1159,6 +1266,12 @@ int NetworkAgent::start_local_print_with_record(PrintParams params, OnUpdateStat
 {
     int ret = 0;
     if (network_agent && start_local_print_with_record_ptr) {
+        // Debug: reconstruct and log the project_file MQTT JSON we expect to publish
+        {
+            std::string pj = build_project_file_json(params);
+            if (!pj.empty()) BOOST_LOG_TRIVIAL(info) << "[NetworkAgent] debug_project_file_json(local_with_record): " << pj;
+        }
+        BOOST_LOG_TRIVIAL(info) << "[NetworkAgent] start_local_print_with_record params: " << dump_print_params(params);
         if (use_legacy_network) {
             ret = (reinterpret_cast<func_start_local_print_with_record_legacy>(start_local_print_with_record_ptr))(network_agent, as_legacy(params), update_fn, cancel_fn, wait_fn);
         } else {
@@ -1174,6 +1287,7 @@ int NetworkAgent::start_send_gcode_to_sdcard(PrintParams params, OnUpdateStatusF
 {
     int ret = 0;
     if (network_agent && start_send_gcode_to_sdcard_ptr) {
+        BOOST_LOG_TRIVIAL(info) << "[NetworkAgent] start_send_gcode_to_sdcard params: " << dump_print_params(params);
         if (use_legacy_network) {
             ret = (reinterpret_cast<func_start_send_gcode_to_sdcard_legacy>(start_send_gcode_to_sdcard_ptr))(network_agent, as_legacy(params), update_fn, cancel_fn, wait_fn);
         } else {
@@ -1189,6 +1303,12 @@ int NetworkAgent::start_local_print(PrintParams params, OnUpdateStatusFn update_
 {
     int ret = 0;
     if (network_agent && start_local_print_ptr) {
+        // Debug: reconstruct and log the project_file MQTT JSON we expect to publish
+        {
+            std::string pj = build_project_file_json(params);
+            if (!pj.empty()) BOOST_LOG_TRIVIAL(info) << "[NetworkAgent] debug_project_file_json(local): " << pj;
+        }
+        BOOST_LOG_TRIVIAL(info) << "[NetworkAgent] start_local_print params: " << dump_print_params(params);
         if (use_legacy_network) {
             ret = (reinterpret_cast<func_start_local_print_legacy>(start_local_print_ptr))(network_agent, as_legacy(params), update_fn, cancel_fn);
         } else {

@@ -2,5 +2,13 @@
 <project version="4">
   <component name="VcsDirectoryMappings">
     <mapping directory="" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/deps/build/dep_ZLIB-prefix/src/dep_ZLIB" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/deps/build/dep_wxWidgets-prefix/src/dep_wxWidgets" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/deps/build/dep_wxWidgets-prefix/src/dep_wxWidgets/3rdparty/catch" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/deps/build/dep_wxWidgets-prefix/src/dep_wxWidgets/src/expat" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/deps/build/dep_wxWidgets-prefix/src/dep_wxWidgets/src/jpeg" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/deps/build/dep_wxWidgets-prefix/src/dep_wxWidgets/src/png" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/deps/build/dep_wxWidgets-prefix/src/dep_wxWidgets/src/tiff" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/deps/build/dep_wxWidgets-prefix/src/dep_wxWidgets/src/zlib" vcs="Git" />
   </component>
 </project>

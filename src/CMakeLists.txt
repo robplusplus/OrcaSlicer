@@ -107,9 +107,10 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/dev-utils/platform/msw/OrcaSlicer.rc.
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/dev-utils/platform/msw/OrcaSlicer.manifest.in ${CMAKE_CURRENT_BINARY_DIR}/OrcaSlicer.manifest @ONLY)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/dev-utils/platform/osx/Info.plist.in ${CMAKE_CURRENT_BINARY_DIR}/Info.plist @ONLY)
 if (WIN32)
-    add_library(OrcaSlicer SHARED OrcaSlicer.cpp OrcaSlicer.hpp)
+    # Include RestServer.cpp and RestActions.cpp so the REST server is built into the OrcaSlicer module
+    add_library(OrcaSlicer SHARED OrcaSlicer.cpp RestServer.cpp RestActions.cpp OrcaSlicer.hpp)
 else ()
-    add_executable(OrcaSlicer OrcaSlicer.cpp OrcaSlicer.hpp)
+    add_executable(OrcaSlicer OrcaSlicer.cpp RestServer.cpp RestActions.cpp OrcaSlicer.hpp)
 endif ()
 
 if (MINGW)
@@ -124,7 +125,9 @@ if (NOT WIN32 AND NOT APPLE)
     configure_file(${CMAKE_CURRENT_SOURCE_DIR}/dev-utils/platform/unix/build_linux_image.sh.in ${CMAKE_CURRENT_BINARY_DIR}/build_linux_image.sh USE_SOURCE_PERMISSIONS @ONLY)
 endif ()
 
-target_link_libraries(OrcaSlicer libslic3r cereal::cereal)
+find_package(Boost REQUIRED COMPONENTS system)
+
+target_link_libraries(OrcaSlicer libslic3r cereal::cereal Boost::system)
 # target_include_directories(OrcaSlicer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/slic3r)
 if (APPLE)
 #    add_compile_options(-stdlib=libc++)
