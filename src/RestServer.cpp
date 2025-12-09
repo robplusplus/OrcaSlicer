@@ -79,111 +79,124 @@ void RestServer::stop()
 
 void RestServer::run()
 {
-	try {
-		boost::asio::io_context ioc{1};
+    try {
+        boost::asio::io_context ioc{1};
+        tcp::acceptor acceptor{ioc, {boost::asio::ip::make_address(m_address), m_port}};
 
-		tcp::acceptor acceptor{ioc, {boost::asio::ip::make_address(m_address), m_port}};
+        while (m_running) {
+            beast::error_code ec;
+            tcp::socket socket{ioc};
+            acceptor.accept(socket, ec);
+            if (ec) {
+                if (!m_running)
+                    break;
+                BOOST_LOG_TRIVIAL(error) << "RestServer accept error: " << ec.message();
+                continue;
+            }
 
-		while (m_running) {
-			beast::error_code ec;
-			tcp::socket socket{ioc};
-			acceptor.accept(socket, ec);
-			if (ec) {
-				if (!m_running)
-					break;
-				BOOST_LOG_TRIVIAL(error) << "RestServer accept error: " << ec.message();
-				continue;
-			}
+            // Buffer must persist across the loop for pipelining support
+            beast::flat_buffer buffer;
 
-			// Handle the connection synchronously on this thread.
-			beast::flat_buffer buffer;
-			http::request<http::string_body> req;
-			http::read(socket, buffer, req, ec);
-			if (ec) {
-				BOOST_LOG_TRIVIAL(error) << "RestServer read error: " << ec.message();
-				continue;
-			}
+            for(;;) {
+                // 1. Read a request
+                http::request<http::string_body> req;
+                http::read(socket, buffer, req, ec);
 
-			http::response<http::string_body> res{http::status::ok, req.version()};
-			res.set(http::field::server, "OrcaSlicer-REST/0");
-			res.keep_alive(req.keep_alive());
+                if (ec == http::error::end_of_stream)
+                    break; // Client closed connection
+                if (ec) {
+                    BOOST_LOG_TRIVIAL(error) << "RestServer read error: " << ec.message();
+                    break;
+                }
 
-			// Log method and target for debugging
-			try {
-				auto ms = req.method_string();
-				std::string method_str(ms.data(), ms.size());
-				auto ts = req.target();
-				std::string target_str(ts.data(), ts.size());
-				BOOST_LOG_TRIVIAL(info) << "[RestServer] Request: method=" << method_str << " target=" << target_str;
-			} catch (...) {}
+                // 2. Prepare response
+                http::response<http::string_body> res{http::status::ok, req.version()};
+                res.set(http::field::server, "OrcaSlicer-REST/0");
+                res.keep_alive(req.keep_alive());
 
-			if (req.method() == http::verb::post && (req.target() == "/rpc" || req.target() == "/rpc/")) {
-				std::string body = req.body();
-				BOOST_LOG_TRIVIAL(info) << "[RestServer] RPC invoked, body size=" << body.size();
+                // Log method and target
+                try {
+                    auto ms = req.method_string();
+                    std::string method_str(ms.data(), ms.size());
+                    auto ts = req.target();
+                    std::string target_str(ts.data(), ts.size());
+                    BOOST_LOG_TRIVIAL(info) << "[RestServer] Request: method=" << method_str << " target=" << target_str;
+                } catch (...) {}
 
-				std::string resp_status = "error";
-				std::string resp_msg;
-				bool handled_by_registry = false;
-				std::string registry_response;
+                // 3. Process Request
+                if (req.method() == http::verb::post && (req.target() == "/rpc" || req.target() == "/rpc/")) {
+                    std::string body = req.body();
+                    // BOOST_LOG_TRIVIAL(info) << "[RestServer] RPC invoked, body size=" << body.size();
 
-				try {
-					// Directly parse JSON; parsing errors are handled by the catch block
-					nlohmann::json j = nlohmann::json::parse(body);
-					std::string action = j.value("action", std::string());
+                    std::string resp_status = "error";
+                    std::string resp_msg;
+                    bool handled_by_registry = false;
+                    std::string registry_response;
 
-					if (!action.empty()) {
-						auto &reg = rest_actions();
-						std::string action_result;
-						std::string task_id = Slic3r::Utils::start_task_for_action_and_run(reg, action, body, action_result);
-						if (!task_id.empty()) {
-							// Merge task_id into response JSON
-							try {
-								nlohmann::json jr = nlohmann::json::parse(action_result);
-								jr["task_id"] = task_id;
-								registry_response = jr.dump();
-							} catch (...) {
-								// Fall back to wrapping as object
-								nlohmann::json jr; jr["result"] = action_result; jr["task_id"] = task_id; registry_response = jr.dump();
-							}
-							handled_by_registry = true;
-							BOOST_LOG_TRIVIAL(info) << "[RestServer] RPC handled by ActionRegister: action='" << action << "' task_id=" << task_id;
-						} else {
-							resp_msg = std::string("unknown action: ") + action;
-						}
-					} else {
-						resp_msg = "missing action";
-					}
-				} catch (const nlohmann::json::parse_error &jex) {
-					resp_msg = std::string("json parse error: ") + jex.what();
-				} catch (const std::exception &ex) {
-					resp_msg = std::string("exception: ") + ex.what();
-				}
+                    try {
+                        nlohmann::json j = nlohmann::json::parse(body);
+                        std::string action = j.value("action", std::string());
 
-				if (handled_by_registry) {
-					res.set(http::field::content_type, "application/json");
-					res.body() = registry_response;
-					res.prepare_payload();
-				} else {
-					// Build JSON response using nlohmann
-					nlohmann::json r;
-					r["status"]  = resp_status;
-					r["message"] = resp_msg;
-					res.set(http::field::content_type, "application/json");
-					res.body() = r.dump();
-					res.prepare_payload();
-				}
-			} else {
-				res.result(http::status::not_found);
-				res.body() = "Not found";
-				res.prepare_payload();
-			}
+                        if (!action.empty()) {
+                            auto &reg = rest_actions();
+                            std::string action_result;
+                            std::string task_id = Slic3r::Utils::start_task_for_action_and_run(reg, action, body, action_result);
+                            if (!task_id.empty()) {
+                                try {
+                                    nlohmann::json jr = nlohmann::json::parse(action_result);
+                                    jr["task_id"] = task_id;
+                                    registry_response = jr.dump();
+                                } catch (...) {
+                                    nlohmann::json jr; jr["result"] = action_result; jr["task_id"] = task_id; registry_response = jr.dump();
+                                }
+                                handled_by_registry = true;
+                                BOOST_LOG_TRIVIAL(info) << "[RestServer] RPC handled: action='" << action << "' task_id=" << task_id;
+                            } else {
+                                resp_msg = std::string("unknown action: ") + action;
+                            }
+                        } else {
+                            resp_msg = "missing action";
+                        }
+                    } catch (const std::exception &ex) {
+                        resp_msg = std::string("exception: ") + ex.what();
+                    }
 
-			http::write(socket, res, ec);
-			socket.shutdown(tcp::socket::shutdown_send, ec);
-		}
-	} catch (std::exception& ex) {
-		BOOST_LOG_TRIVIAL(error) << "RestServer exception: " << ex.what();
-	}
+                    if (handled_by_registry) {
+                        res.set(http::field::content_type, "application/json");
+                        res.body() = registry_response;
+                    } else {
+                        nlohmann::json r;
+                        r["status"]  = resp_status;
+                        r["message"] = resp_msg;
+                        res.set(http::field::content_type, "application/json");
+                        res.body() = r.dump();
+                    }
+                    res.prepare_payload();
+                } else {
+                    res.result(http::status::not_found);
+                    res.body() = "Not found";
+                    res.prepare_payload();
+                }
+
+                // 4. Write response
+                http::write(socket, res, ec);
+                if (ec) {
+                    BOOST_LOG_TRIVIAL(error) << "RestServer write error: " << ec.message();
+                    break;
+                }
+
+                // 5. Break loop if Keep-Alive is not requested
+                if (!req.keep_alive()) {
+                    break;
+                }
+            }
+
+            // Shutdown socket after loop exits
+            socket.shutdown(tcp::socket::shutdown_send, ec);
+        }
+    } catch (std::exception& ex) {
+        BOOST_LOG_TRIVIAL(error) << "RestServer exception: " << ex.what();
+    }
 }
 
 // Global server pointer controlled by the main application via the helpers

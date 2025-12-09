@@ -100,12 +100,43 @@ private:
     std::mutex mutex;
 };
 
+enum class TaskState {
+    Queued,
+    Running,
+    Scheduled,
+    Submitted,
+    Completed,
+    Failed,
+    Unknown
+};
+
+inline std::string to_string(TaskState s) {
+    switch(s) {
+        case TaskState::Queued: return "queued";
+        case TaskState::Running: return "running";
+        case TaskState::Scheduled: return "scheduled";
+        case TaskState::Submitted: return "submitted";
+        case TaskState::Completed: return "completed";
+        case TaskState::Failed: return "failed";
+        default: return "unknown";
+    }
+}
+
+inline TaskState task_state_from_string(const std::string& s) {
+    if (s == "queued") return TaskState::Queued;
+    if (s == "running") return TaskState::Running;
+    if (s == "scheduled") return TaskState::Scheduled;
+    if (s == "submitted") return TaskState::Submitted;
+    if (s == "completed" || s == "success") return TaskState::Completed;
+    if (s == "failed" || s == "error") return TaskState::Failed;
+    return TaskState::Unknown;
+}
 
 // Simple in-process task tracking for action executions
 struct ActionTaskSnapshot {
     std::string id;
     std::string action;
-    std::string state;     // queued | running | scheduled | submitted | completed | failed
+    TaskState   state{TaskState::Queued};     // queued | running | scheduled | submitted | completed | failed
     std::string message;   // last message
     int         progress{-1};
     std::string result;    // optional: last known result JSON (as string)
@@ -131,22 +162,27 @@ public:
         ActionTaskSnapshot t;
         t.id = id;
         t.action = action;
-        t.state = "queued";
+        t.state = TaskState::Queued;
         t.started_ms = nowms;
         t.updated_ms = nowms;
         tasks[id] = std::move(t);
         return id;
     }
 
-    void update(const std::string& id, const std::string& state, const std::string& message = std::string(), int progress = -1)
+    void update(const std::string& id, TaskState state, const std::string& message = std::string(), int progress = -1)
     {
         std::lock_guard<std::mutex> lock(mtx);
         auto it = tasks.find(id);
         if (it == tasks.end()) return;
-        if (!state.empty()) it->second.state = state;
+        it->second.state = state;
         it->second.updated_ms = now_ms();
         if (!message.empty()) it->second.message = message;
         if (progress >= 0) it->second.progress = progress;
+    }
+
+    void update(const std::string& id, const std::string& state, const std::string& message = std::string(), int progress = -1)
+    {
+        update(id, task_state_from_string(state), message, progress);
     }
 
     void append_log(const std::string& id, const std::string& msg)
@@ -187,7 +223,7 @@ public:
         nlohmann::json j;
         j["id"] = t.id;
         j["action"] = t.action;
-        j["state"] = t.state;
+        j["state"] = to_string(t.state);
         j["message"] = t.message;
         if (t.progress >= 0) j["progress"] = t.progress; else j["progress"] = nullptr;
         if (!t.result.empty()) j["result"] = nlohmann::json::parse(t.result, nullptr, false, true);
@@ -206,7 +242,7 @@ public:
     {
         const std::string id = new_task(action_name);
         set_current_task_id(id);
-        update(id, "running", "action invoked");
+        update(id, TaskState::Running, "action invoked");
         std::string result;
         try {
             result = action->run(parms);
@@ -216,20 +252,20 @@ public:
                 auto jr = nlohmann::json::parse(result);
                 std::string st = jr.value("status", std::string());
                 std::string msg = jr.value("message", std::string());
-                if (st == "ok" && msg.find("scheduled") != std::string::npos) update(id, "scheduled", msg);
-                else if (st == "ok") update(id, "success", msg);
-                else update(id, "failed", msg);
+                if (st == "ok" && msg.find("scheduled") != std::string::npos) update(id, TaskState::Scheduled, msg);
+                else if (st == "ok") update(id, TaskState::Completed, msg);
+                else update(id, TaskState::Failed, msg);
             } catch (...) {
-                update(id, "success");
+                update(id, TaskState::Completed);
             }
         } catch (const std::exception& ex) {
             nlohmann::json er; er["status"] = "error"; er["message"] = std::string("exception: ") + ex.what();
             result = er.dump();
-            update(id, "failed", ex.what());
+            update(id, TaskState::Failed, ex.what());
         } catch (...) {
             nlohmann::json er; er["status"] = "error"; er["message"] = "unknown exception";
             result = er.dump();
-            update(id, "failed", "unknown exception");
+            update(id, TaskState::Failed, "unknown exception");
         }
         // Clear current task id
         set_current_task_id("");
@@ -237,6 +273,8 @@ public:
     }
 
     // Static helpers for actions to update status
+    static void task_update(const std::string& id, TaskState state, const std::string& message = std::string(), int progress = -1)
+    { instance().update(id, state, message, progress); }
     static void task_update(const std::string& id, const std::string& state, const std::string& message = std::string(), int progress = -1)
     { instance().update(id, state, message, progress); }
     static void task_set_result(const std::string& id, const std::string& result_json)
@@ -289,6 +327,9 @@ inline std::string start_task_for_action_and_run(ActionRegister& reg, const std:
 
 inline std::string current_action_task_id()
 { return ActionTaskRegistry::current_id(); }
+
+inline void update_action_task(const std::string& id, TaskState state, const std::string& message = std::string(), int progress = -1)
+{ ActionTaskRegistry::task_update(id, state, message, progress); }
 
 inline void update_action_task(const std::string& id, const std::string& state, const std::string& message = std::string(), int progress = -1)
 { ActionTaskRegistry::task_update(id, state, message, progress); }

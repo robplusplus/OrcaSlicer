@@ -619,8 +619,10 @@ void ArrangeJob::finalize(bool canceled, std::exception_ptr &eptr) {
         eptr = std::current_exception();
     }
 
-    if (canceled || eptr)
+    if (canceled || eptr) {
+        m_plater->m_arrange_running.store(false);
         return;
+    }
 
     // Unprintable items go to the last virtual bed
     int beds = 0;
