@@ -108,9 +108,9 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/dev-utils/platform/msw/OrcaSlicer.man
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/dev-utils/platform/osx/Info.plist.in ${CMAKE_CURRENT_BINARY_DIR}/Info.plist @ONLY)
 if (WIN32)
     # Include RestServer.cpp and RestActions.cpp so the REST server is built into the OrcaSlicer module
-    add_library(OrcaSlicer SHARED OrcaSlicer.cpp RestServer.cpp RestActions.cpp OrcaSlicer.hpp)
+    add_library(OrcaSlicer SHARED OrcaSlicer.cpp RestServer.cpp RestActions.cpp RestUtils.cpp OrcaSlicer.hpp RestUtils.hpp)
 else ()
-    add_executable(OrcaSlicer OrcaSlicer.cpp RestServer.cpp RestActions.cpp OrcaSlicer.hpp)
+    add_executable(OrcaSlicer OrcaSlicer.cpp RestServer.cpp RestActions.cpp RestUtils.cpp OrcaSlicer.hpp RestUtils.hpp)
 endif ()
 
 if (MINGW)
