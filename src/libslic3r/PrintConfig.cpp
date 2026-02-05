@@ -740,6 +740,13 @@ void PrintConfigDef::init_common_params()
     def->cli = ConfigOptionDef::nocli;
     def->set_default_value(new ConfigOptionBool(false));
 
+    def = this->add("printer_agent", coString);
+    def->label = L("Printer Agent");
+    def->tooltip = L("Select the network agent implementation for printer communication.");
+    def->mode = comAdvanced;
+    def->cli = ConfigOptionDef::nocli;
+    def->set_default_value(new ConfigOptionString(""));
+
     def = this->add("print_host", coString);
     def->label = L("Hostname, IP or URL");
     def->tooltip = L("Orca Slicer can upload G-code files to a printer host. This field should contain "
@@ -1350,6 +1357,22 @@ void PrintConfigDef::init_fff_params()
     def->category = L("Quality");
     def->tooltip = L("Use only one wall on flat top surfaces, to give more space to the top infill pattern.");
     def->set_default_value(new ConfigOptionBool(false));
+
+    def = this->add("top_surface_ignore_small_upper_islands", coBool);
+    def->label = L("Ignore small upper-layer features");
+    def->category = L("Quality");
+    def->tooltip = L("When enabled, small or thin features on the next layer (for example embossed / raised text) are ignored when determining top-surface regions on the current layer. This can prevent a top surface from being split into fragments below raised details.");
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(false));
+
+    def = this->add("top_surface_ignore_small_upper_islands_max_ratio", coFloat);
+    def->label = L("Max upper coverage ratio");
+    def->category = L("Quality");
+    def->tooltip = L("Upper-layer coverage is ignored only if the covered area is at most this fraction of the current surface area (0.0 - 1.0). Increase this value if raised text still interrupts the top surface below.");
+    def->min = 0;
+    def->max = 1;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0.15));
 
     // the tooltip is copied from SuperStudio
     def = this->add("min_width_top_surface", coFloatOrPercent);
@@ -4457,9 +4480,9 @@ void PrintConfigDef::init_fff_params()
 
     def = this->add("reduce_infill_retraction", coBool);
     def->label = L("Reduce infill retraction");
-    def->tooltip = L("Don't retract when the travel is in infill area absolutely. That means the oozing can't been seen. "
+    def->tooltip = L("Don't retract when the travel is entirely within an infill area. That means the oozing can't been seen. "
                      "This can reduce times of retraction for complex model and save printing time, but make slicing and "
-                     "G-code generating slower.");
+                     "G-code generating slower. Note that z-hop is also not performed in areas where retraction is skipped.");
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionBool(false));
 

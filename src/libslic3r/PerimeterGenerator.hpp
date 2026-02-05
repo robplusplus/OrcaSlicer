@@ -59,6 +59,13 @@ template<> struct hash<Slic3r::FuzzySkinConfig>
 
 namespace Slic3r {
 
+// Orca: Filter out small/thin upper-layer islands (e.g. embossed text) that would
+// otherwise fragment the top surface below. Used by both perimeter generation
+// and surface-type detection.
+Polygons top_surface_filter_upper_islands(const PrintRegionConfig &config,
+    const ExPolygons &current_contour, const Polygons &upper_slices_clipped,
+    coord_t perimeter_width);
+
 class PerimeterGenerator {
 public:
     // Inputs:
