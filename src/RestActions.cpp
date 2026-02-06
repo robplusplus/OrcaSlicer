@@ -45,6 +45,9 @@
 #include "libslic3r/GCode/WipeTower.hpp"
 #include "libslic3r/Print.hpp"
 #include "libslic3r/libslic3r.h"
+
+namespace BBL = Slic3r;
+
 // task updates
 #include "slic3r/Utils/ActionRegister.hpp"
 #include "slic3r/GUI/Tab.hpp"
@@ -872,7 +875,7 @@ void register_rest_actions(ActionRegister& reg)
                         std::string dev_ip = mo->get_dev_ip();
                         std::string username = "bblp";
                         std::string password = mo->get_access_code();
-                        bool use_ssl_mqtt = mo->local_use_ssl_for_mqtt;
+                        bool use_ssl_mqtt = mo->local_use_ssl;
                         int conn_ret = agent->connect_printer(dev_id, dev_ip, username, password, use_ssl_mqtt);
                         (void)conn_ret; // best-effort; AMS listing still attempted below
                     }
@@ -1038,7 +1041,7 @@ void register_rest_actions(ActionRegister& reg)
                         params.username = "bblp";
                         params.password = mo->get_access_code();
                         params.use_ssl_for_ftp = mo->local_use_ssl_for_ftp;
-                        params.use_ssl_for_mqtt = mo->local_use_ssl_for_mqtt;
+                        params.use_ssl_for_mqtt = mo->local_use_ssl;
                         params.ftp_folder = mo->get_ftp_folder();
                         try { params.dev_name = mo->get_dev_name(); } catch (...) {}
                         context->log(std::string("UI thread: populated from MachineObject: dev_ip='") + params.dev_ip + "' ftp_folder='" + params.ftp_folder + "'");

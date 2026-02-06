@@ -8,7 +8,7 @@ namespace Slic3r {
 namespace Utils {
 
 const char* net_code_to_str(int code);
-std::string dump_print_params(const BBL::PrintParams& p);
+std::string dump_print_params(const Slic3r::PrintParams& p);
 
 } // namespace Utils
 } // namespace Slic3r

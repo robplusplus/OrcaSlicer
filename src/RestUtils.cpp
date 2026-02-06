@@ -21,7 +21,7 @@ const char* net_code_to_str(int code)
     }
 }
 
-std::string dump_print_params(const BBL::PrintParams& p)
+std::string dump_print_params(const PrintParams& p)
 {
     auto tf = [](bool v){ return v ? "true" : "false"; };
     auto mask = [](const std::string& s){ return s.empty() ? std::string("") : std::string(s.size(), '*'); };
