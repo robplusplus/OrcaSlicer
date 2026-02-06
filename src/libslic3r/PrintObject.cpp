@@ -1,5 +1,6 @@
 #include "Exception.hpp"
 #include "Print.hpp"
+#include "TangentialHoleBridging.hpp"
 #include "BoundingBox.hpp"
 #include "ClipperUtils.hpp"
 #include "ElephantFootCompensation.hpp"
@@ -4384,6 +4385,5 @@ const Layer* PrintObject::get_layer_at_bottomz(coordf_t bottom_z, coordf_t epsil
 }
 
 Layer* PrintObject::get_layer_at_bottomz(coordf_t bottom_z, coordf_t epsilon) { return const_cast<Layer*>(std::as_const(*this).get_layer_at_bottomz(bottom_z, epsilon)); }
-
 
 } // namespace Slic3r

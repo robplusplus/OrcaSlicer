@@ -435,6 +435,8 @@ set(lisbslic3r_sources
     SurfaceMesh.hpp
     SVG.cpp
     SVG.hpp
+    TangentialHoleBridging.cpp
+    TangentialHoleBridging.hpp
     Technologies.hpp
     Tesselate.cpp
     Tesselate.hpp
