@@ -8,7 +8,7 @@
 #include "I18N.hpp"
 #include "Layer.hpp"
 #include "MutablePolygon.hpp"
-#include "PerimeterGenerator.hpp"
+#include "TopSurface.hpp"
 #include "PrintConfig.hpp"
 #include "Support/SupportMaterial.hpp"
 #include "Support/SupportSpotsGenerator.hpp"
@@ -1036,8 +1036,8 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "alternate_extra_wall"
             || opt_key == "top_one_wall_type"
             || opt_key == "min_width_top_surface"
-            || opt_key == "top_surface_ignore_small_upper_islands"
-            || opt_key == "top_surface_ignore_small_upper_islands_max_ratio"
+            || opt_key == "top_surface_ignore_small_features"
+            || opt_key == "top_surface_ignore_small_features_area"
             || opt_key == "only_one_wall_first_layer"
             || opt_key == "extra_perimeters_on_overhangs"
             || opt_key == "detect_overhang_wall"
@@ -1473,9 +1473,8 @@ void PrintObject::detect_surfaces_type()
                             to_polygons(upper_layer->lslices);
                         // Orca: filter out small/thin upper features (e.g. raised text) so they
                         // don't fragment the top-surface classification below.
-                        upper_cover = top_surface_filter_upper_islands(
-                            layerm->region().config(), layerm_slices_surfaces, upper_cover,
-                            coord_t(layerm->flow(frExternalPerimeter).scaled_width()));
+                        upper_cover = top_surface_filter_features(
+                            layerm->region().config(), layerm_slices_surfaces, upper_cover);
                         ExPolygons top_exposed = diff_ex(layerm_slices_surfaces, upper_cover, ApplySafetyOffset::Yes);
                         surfaces_append(top, opening_ex(top_exposed, offset), stTop);
                     } else {

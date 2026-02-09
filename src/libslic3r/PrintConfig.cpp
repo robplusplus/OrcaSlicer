@@ -1359,21 +1359,21 @@ void PrintConfigDef::init_fff_params()
     def->tooltip = L("Use only one wall on flat top surfaces, to give more space to the top infill pattern.");
     def->set_default_value(new ConfigOptionBool(false));
 
-    def = this->add("top_surface_ignore_small_upper_islands", coBool);
-    def->label = L("Ignore small upper-layer features");
+    def = this->add("top_surface_ignore_small_features", coBool);
+    def->label = L("Make top surface continuous");
     def->category = L("Quality");
-    def->tooltip = L("When enabled, small or thin features on the next layer (for example embossed / raised text) are ignored when determining top-surface regions on the current layer. This can prevent a top surface from being split into fragments below raised details.");
+    def->tooltip = L("If enabled, the top surface fill pattern will cover the area below small features on the layer above, rather than being interrupted by them. Useful for surfaces with embossed text or small details on top.");
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionBool(false));
 
-    def = this->add("top_surface_ignore_small_upper_islands_max_ratio", coFloat);
-    def->label = L("Max upper coverage ratio");
+    def = this->add("top_surface_ignore_small_features_area", coFloat);
+    def->label = L("Small feature threshold");
     def->category = L("Quality");
-    def->tooltip = L("Upper-layer coverage is ignored only if the covered area is at most this fraction of the current surface area (0.0 - 1.0). Increase this value if raised text still interrupts the top surface below.");
+    def->tooltip = L("Features on the layer above with an area smaller than this value (mm²) will be ignored, preserving the continuity of the top surface below them.");
     def->min = 0;
-    def->max = 1;
+    def->max = 10000;
     def->mode = comAdvanced;
-    def->set_default_value(new ConfigOptionFloat(0.15));
+    def->set_default_value(new ConfigOptionFloat(10.0));
 
     // the tooltip is copied from SuperStudio
     def = this->add("min_width_top_surface", coFloatOrPercent);
@@ -5417,6 +5417,18 @@ void PrintConfigDef::init_fff_params()
     def->mode = comDevelop;
     def->set_default_value(new ConfigOptionInt(1));
 
+
+    def = this->add("file_start_gcode", coString);
+    def->label = L("File header G-code");
+    def->tooltip = L("G-code written at the very top of the output file, before any other content. "
+                     "Useful for adding metadata that printer firmware reads from the first lines of the file "
+                     "(e.g. estimated print time, filament usage). "
+                     "Supports placeholders like {print_time_sec} and {used_filament_length}.");
+    def->multiline = true;
+    def->full_width = true;
+    def->height = 8;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionString(""));
 
     def = this->add("machine_start_gcode", coString);
     def->label = L("Start G-code");
@@ -10319,6 +10331,14 @@ PrintStatisticsConfigDef::PrintStatisticsConfigDef()
     def = this->add("used_filament", coFloat);
     def->label = L("Used filament");
     def->tooltip = L("Total length of filament used in the print.");
+
+    def = this->add("print_time_sec", coString);
+    def->label = L("Print time (seconds)");
+    def->tooltip = L("Total estimated print time in seconds. Replaced with actual value during post-processing.");
+
+    def = this->add("used_filament_length", coString);
+    def->label = L("Filament length (meters)");
+    def->tooltip = L("Total filament length used in meters. Replaced with actual value during post-processing.");
 }
 
 ObjectsInfoConfigDef::ObjectsInfoConfigDef()
@@ -10453,6 +10473,7 @@ OtherPresetsConfigDef::OtherPresetsConfigDef()
 
 static std::map<t_custom_gcode_key, t_config_option_keys> s_CustomGcodeSpecificPlaceholders{
     // Machine G-code
+    {"file_start_gcode",           {}},
     {"machine_start_gcode",         {}},
     {"machine_end_gcode",           {"layer_num", "layer_z", "max_layer_z", "filament_extruder_id"}},
     {"before_layer_change_gcode",   {"layer_num", "layer_z", "max_layer_z"}},

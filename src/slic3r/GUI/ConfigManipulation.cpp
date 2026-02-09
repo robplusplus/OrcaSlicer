@@ -895,7 +895,7 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig *config, co
     toggle_line("make_overhang_printable_hole_size", have_make_overhang_printable);
 
     toggle_line("min_width_top_surface", config->opt_bool("only_one_wall_top") || ((config->opt_float("min_length_factor") > 0.5f) && have_arachne)); // 0.5 is default value
-    toggle_line("top_surface_ignore_small_upper_islands_max_ratio", config->opt_bool("top_surface_ignore_small_upper_islands"));
+    toggle_line("top_surface_ignore_small_features_area", config->opt_bool("top_surface_ignore_small_features"));
 
     for (auto el : { "hole_to_polyhole_threshold", "hole_to_polyhole_twisted" })
         toggle_line(el, config->opt_bool("hole_to_polyhole"));

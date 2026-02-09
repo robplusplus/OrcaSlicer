@@ -1,4 +1,5 @@
 #include "PerimeterGenerator.hpp"
+#include "TopSurface.hpp"
 #include "AABBTreeLines.hpp"
 #include "BridgeDetector.hpp"
 #include "ClipperUtils.hpp"
@@ -30,25 +31,19 @@ namespace Slic3r {
     
 using namespace Slic3r::Feature::FuzzySkin;
 
-Polygons top_surface_filter_upper_islands(const PrintRegionConfig &config, const ExPolygons &current_contour, const Polygons &upper_slices_clipped,
-    coord_t perimeter_width)
+Polygons top_surface_filter_features(const PrintRegionConfig &config, const ExPolygons &current_contour, const Polygons &upper_slices_clipped)
 {
-    if (!config.top_surface_ignore_small_upper_islands || upper_slices_clipped.empty() || current_contour.empty())
+    if (!config.top_surface_ignore_small_features || upper_slices_clipped.empty() || current_contour.empty())
         return upper_slices_clipped;
 
     // Decide per disjoint upper island (so thin text strokes can be ignored even if there is
     // also a larger upper feature on the same layer).
     const ExPolygons upper_islands = union_ex(upper_slices_clipped);
 
-    double current_area = 0.0;
-    for (const ExPolygon &p : current_contour)
-        current_area += std::abs(p.area());
 
-    if (current_area <= 0.0)
-        return upper_slices_clipped;
-
-    const double max_covered_ratio = config.top_surface_ignore_small_upper_islands_max_ratio;
-    const double shrink = std::max(0.0, double(perimeter_width) * 0.5);
+    const double max_island_area = config.top_surface_ignore_small_features_area;
+    // Convert mm^2 to internal units.
+    const double max_island_area_scaled = max_island_area * scale_(1.0) * scale_(1.0);
 
     ExPolygons kept_islands;
     kept_islands.reserve(upper_islands.size());
@@ -60,10 +55,33 @@ Polygons top_surface_filter_upper_islands(const PrintRegionConfig &config, const
         for (const ExPolygon &p : covered)
             covered_area += std::abs(p.area());
 
-        const bool ignore_by_ratio = (covered_area > 0.0) && (covered_area / current_area <= max_covered_ratio);
-        const bool ignore_by_thickness = (shrink > 0.0) && offset_ex(island_ex, -shrink).empty();
+        const bool ignore_by_area = (covered_area > 0.0) && (covered_area <= max_island_area_scaled);
 
-        if (!(ignore_by_ratio || ignore_by_thickness))
+        bool keep = !ignore_by_area;
+        if (!keep) {
+            // Only ignore if the island is a small Detail on a Larger surface.
+            // If the island covers a significant portion of the surface below (e.g. a small tower),
+            // then it is structural and should be kept to avoid converting the entire tower to Top Surface.
+            constexpr double structural_coverage_threshold = 0.75;
+
+            for (const ExPolygon &base_poly : current_contour) {
+                if (!base_poly.contour.bounding_box().overlap(island.contour.bounding_box()))
+                    continue;
+
+                double base_area = std::abs(base_poly.area());
+
+                // If base is large, ratio is small -> ignore.
+                // We want covered / base > threshold
+                // so covered > base * threshold
+                if (base_area * structural_coverage_threshold > covered_area)
+                    continue;
+
+                keep = true;
+                break;
+            }
+        }
+
+        if (keep)
             kept_islands.push_back(island);
     }
 
@@ -633,7 +651,7 @@ void PerimeterGenerator::split_top_surfaces(const ExPolygons &orig_polygons, ExP
 
     // Orca: If the next layer only contains tiny islands (typical for embossed / raised text),
     // ignore them so they don't interrupt the top fill below.
-    upper_polygons_series_clipped = top_surface_filter_upper_islands(*config, orig_polygons, upper_polygons_series_clipped, perimeter_width);
+    upper_polygons_series_clipped = top_surface_filter_features(*config, orig_polygons, upper_polygons_series_clipped);
 
     upper_polygons_series_clipped          = offset(upper_polygons_series_clipped, min_width_top_surface);
 
@@ -2243,7 +2261,7 @@ void PerimeterGenerator::process_arachne()
 
             // Orca: If the next layer only contains tiny islands (typical for embossed / raised text),
             // ignore them so they don't interrupt the top surface below.
-            upper_slices_clipped = top_surface_filter_upper_islands(*config, infill_contour, upper_slices_clipped, perimeter_width);
+            upper_slices_clipped = top_surface_filter_features(*config, infill_contour, upper_slices_clipped);
 
             top_expolygons = diff_ex(infill_contour, upper_slices_clipped);
 
